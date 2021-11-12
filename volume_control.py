@@ -49,6 +49,7 @@ async def getVolume(outputDevice):
     interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
     volume = cast(interface, POINTER(IAudioEndpointVolume))
     print("volume.GetMasterVolumeLevel(): %s" % round(volume.GetMasterVolumeLevelScalar()*100))
+    return volume.GetMasterVolumeLevelScalar()*100
 
 async def printAllDevices():
     mixer_output = None

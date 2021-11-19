@@ -1,6 +1,10 @@
 from volume_control import *
 from brightness_control import *
 from bluetooth_test_client import *
+from numpy import interp
+
+def firstElement(arr):
+    return arr[0]
 
 async def getPoints(client):
     currentPCVolume = await getVolume("Speakers (Realtek(R) Audio)")
@@ -11,57 +15,116 @@ async def getPoints(client):
 
     return [[currentPCVolume, currentRoomVolume], [currentPCBrightness, currentRoomBrightness]]
 
-async def brightness(client, p1, p2):
+async def getBrightnessPoint(client):
+    currentPCBrightness = await getBrightness()
+    currentRoomBrightness = await client.get_brightness()
+
+    print(f"Brightness points: {[currentRoomBrightness, currentPCBrightness]}")
+    return [currentRoomBrightness, currentPCBrightness]
+
+async def getVolumePoint(client):
+    currentPCVolume = await getVolume("Speakers (Realtek(R) Audio)")
+    currentRoomVolume = await client.get_volume()
+
+    print(f"Volume points: {[currentRoomVolume, currentPCVolume]}")
+    return [currentRoomVolume, currentPCVolume]
+
+def getSlope(xList, yList):
+    intX = 0
+    intY = 0
+    sumX = 0;
+    sumY = 0;
+    for i in xList:
+        intX += i
+
+    for i in yList:
+        intY += i
+
+    intX /= len(xList)
+    intY /= len(yList)
+
+    for i in range(len(xList)):
+        sumX += ((xList[i] - intX) * (yList[i] - intY))
+        sumY += ((xList[i] - intX) * (xList[i] - intX))
+
+    slope = sumX / sumY
+    return slope, intX, intY
+
+def getYint(slope, xa, ya):
+    intercept = ya - slope * xa
+    return intercept
+
+async def brightness(client, brightnessPointsFirst, brightnessPointsSecond):
     currentBrightness = await client.get_brightness()
-    slope = (p1[1] - p2[1]) / (p1[0] - p2[0])
-    setBrightnessTo = slope * (currentBrightness - p1[0]) + p1[1]
+    # setBrightnessTo = interp(currentBrightness, brightnessPointsFirst, brightnessPointsSecond)
+    slope, xa, ya = getSlope(brightnessPointsFirst, brightnessPointsSecond)
+    setBrightnessTo = slope * currentBrightness + getYint(slope, xa, ya)
+
+
     if setBrightnessTo < 0:
         setBrightnessTo = 0
     elif setBrightnessTo > 100:
         setBrightnessTo = 100
-    print(f"set brightness: {setBrightnessTo}")
-    await setBrightness(setBrightnessTo)
+    print(f"brightness: {currentBrightness}, {setBrightnessTo}")
+    #await setBrightness(setBrightnessTo)
 
 
-async def volume(client, p1, p2):
+async def volume(client, volumePointsFirst, volumePointsSecond):
     currentVolume = await client.get_volume()
-    slope = (p1[1] - p2[1]) / (p1[0] - p2[0])
-    setVolumeTo = slope * (currentVolume - p1[0]) + p1[1]
+
+    slope, xa, ya = getSlope(volumePointsFirst, volumePointsSecond)
+    setVolumeTo = slope * currentVolume + getYint(slope, xa, ya)
+
     if setVolumeTo < 0:
         setVolumeTo = 0
     elif setVolumeTo > 100:
         setVolumeTo = 100
-    print(currentVolume)
-    await setVolume(setVolumeTo, "Speakers (Realtek(R) Audio)")
+    print(f"volume: {currentVolume}, {setVolumeTo}")
+    #await setVolume(setVolumeTo, "Speakers (Realtek(R) Audio)")
 
+def listOfFirst(arr):
+    firstList = []
+    for i in range(len(arr)):
+        firstList.append(arr[i][0])
+
+    return firstList
+
+def listOfSecond(arr):
+    secondList = []
+    for i in range(len(arr)):
+        secondList.append(arr[i][1])
+
+    return secondList
 
 async def main():
     client = NsBleClient()
     await client.discover_and_connect()
 
-    flag = 0
 
-    while flag != 'Y':
-        flag = input("Are you ready to collect the first point? (Y/N)")
-    point1Array = await getPoints(client)
+    brightnessPoints = [] #[[1, 2], [3, 4]]
+    volumePoints = [] #[[2,3], [3, 5]]
+    numberOfPoints = 2
 
-    flag = 0
+    for i in range(numberOfPoints):
+        flag = 0
+        while flag != 'Y':
+            flag = input("Are you ready to collect a point? (Y/N)")
+        brightnessPoints.append(await getBrightnessPoint(client))
+        volumePoints.append(await getVolumePoint(client))
 
-    while flag != 'Y':
-        flag = input("Are you ready to collect the second point? (Y/N)")
-    point2Array = await getPoints(client)
+    brightnessPoints.sort(key=firstElement)
+    volumePoints.sort(key=firstElement)
 
+    brightnessPointsFirst = listOfFirst(brightnessPoints)
+    brightnessPointsSecond = listOfSecond(brightnessPoints)
 
-    volumeP1 = point1Array[0]
-    volumeP2 = point2Array[0]
-
-    brightnessP1 = point1Array[1]
-    brightnessP2 = point2Array[1]
+    volumePointsFirst = listOfFirst(volumePoints)
+    volumePointsSecond = listOfSecond(volumePoints)
 
     while True:
-        await brightness(client, brightnessP1, brightnessP2)
+        await brightness(client, brightnessPointsFirst, brightnessPointsSecond)
         await asyncio.sleep(1)
-        await volume(client, volumeP1, volumeP2)
+        await volume(client, volumePointsFirst, volumePointsSecond)
         await asyncio.sleep(1)
 
 

@@ -99,7 +99,7 @@ class NsBleClient:
 
 class NsDummyClient:
     async def discover_and_connect(self):
-        await asyncio.sleep(5)
+        await asyncio.sleep(0)
 
     async def get_brightness(self):
         await asyncio.sleep(0.2)
